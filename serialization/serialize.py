@@ -4,6 +4,8 @@ import pprint
 
 import torch
 import torch.backends.cudnn as cudnn
+from serialization.pytorch_converter import convert
+from serialization.utils import create_preprocess_dict, compress_and_save
 
 from lib.config import config
 from lib.config import update_config
@@ -149,17 +151,17 @@ def create_model():
 # model = torch.load(models_path + model_name)
 # sample_input_tensor = ""
 
-# def serialize_hrnet(yaml_path, models_path):
-#
-#     model, sample_input_tensor = create_model(yaml_path) #TODO returm sample_input_tensor
-#     model_new_name = model.name + "_for_coreML" #TODO get model name
-#
-#     # coreML serialization
-#     torch.onnx.export(model, sample_input_tensor, models_path + model_new_name)
-#     mlmodel = convert(...)
-#
-#     pd = create_preprocess_dict(...)
-#     compress_and_save(mlmodel, save_path="some path", model_name="my_model", preprocess_dict=pd)
+def serialize_hrnet(yaml_path, models_path):
+
+    model, sample_input_tensor = create_model(yaml_path) #TODO returm sample_input_tensor
+    model_new_name = model.name + "_for_coreML" #TODO get model name
+
+    # coreML serialization
+    torch.onnx.export(model, sample_input_tensor, models_path + model_new_name)
+    mlmodel = convert(...)
+
+    pd = create_preprocess_dict(...)
+    compress_and_save(mlmodel, save_path="some path", model_name="my_model", preprocess_dict=pd)
 
 # yaml_path = "/Users/shira/HRNet-Semantic-Segmentation/experiments/cityscapes/seg_hrnet_w18_small_v1_512x1024_sgd_lr1e-2_wd5e-4_bs_12_epoch484.yaml"
 # create_model()
