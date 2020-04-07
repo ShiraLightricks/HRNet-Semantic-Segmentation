@@ -4,47 +4,54 @@ import pprint
 
 import torch
 import torch.backends.cudnn as cudnn
-import torch.nn as nn
-from serialization.pytorch_converter import convert
-from serialization.utils import create_preprocess_dict, compress_and_save
 
 from lib.config import config
 from lib.config import update_config
+from lib.models.seg_hrnet import get_seg_model
 from lib.utils.modelsummary import get_model_summary
 from lib.utils.utils import create_logger
 
 
-# def parse_args():
+def parse_args():
+    parser = argparse.ArgumentParser(description='Train segmentation network')
+
+    parser.add_argument('--cfg',
+                        help='experiment configure file name',
+                        required=True,
+                        type=str)
+    parser.add_argument('opts',
+                        help="Modify config options using the command-line",
+                        default=None,
+                        nargs=argparse.REMAINDER)
+
+    args = parser.parse_args()
+    update_config(config, args)
+
+    return args
+
+
+
+
+# def parse_args(yaml_file):
 #     parser = argparse.ArgumentParser(description='Train segmentation network')
 #
 #     parser.add_argument('--cfg',
 #                         help='experiment configure file name',
-#                         required=True,
 #                         type=str)
-#     parser.add_argument('opts',
-#                         help="Modify config options using the command-line",
-#                         default=None,
-#                         nargs=argparse.REMAINDER)
 #
+#     parser.cfg = yaml_file
 #     args = parser.parse_args()
 #     update_config(config, args)
-#
 #     return args
 
-def parse_args(yaml_file):
-    parser = argparse.ArgumentParser(description='Train segmentation network')
-    parser.cfg = yaml_file
-    args = parser.parse_args()
-    update_config(config, args)
-    return args
 
-
-def create_model(yaml_path):
-
-    args = parse_args(yaml_path)
+def create_model():
+    # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    # device = torch.device('cuda:0' if torch.cuda.is_avaliable() else 'cpu')
+    args = parse_args()
 
     logger, final_output_dir, _ = create_logger(
-        config, args.cfg, 'model serialization')
+        config, args.cfg, 'serialization')
 
     logger.info(pprint.pformat(args))
     logger.info(pprint.pformat(config))
@@ -55,13 +62,13 @@ def create_model(yaml_path):
     cudnn.enabled = config.CUDNN.ENABLED
 
     # build model
-    model = eval('models.' + config.MODEL.NAME +
-                 '.get_seg_model')(config)
+    model = eval(get_seg_model)(config)
 
     dump_input = torch.rand(
         (1, 3, config.TRAIN.IMAGE_SIZE[1], config.TRAIN.IMAGE_SIZE[0])
     )
     logger.info(get_model_summary(model.cuda(), dump_input.cuda()))
+    # logger.info(get_model_summary(model.to(device), dump_input.to(device)))
 
     if config.TEST.MODEL_FILE:
         model_state_file = config.TEST.MODEL_FILE
@@ -130,11 +137,11 @@ def create_model(yaml_path):
     # logger.info('Done')
 
 
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+#     main()
 
-# create onnox model
-model_name = ""
+# # create onnox model
+# model_name = ""
 
 
 # models_path = "/Users/shira/HRNet-Semantic-Segmentation/serialization/models/"
@@ -142,17 +149,17 @@ model_name = ""
 # model = torch.load(models_path + model_name)
 # sample_input_tensor = ""
 
-def serialize_hrnet(yaml_path, models_path):
-
-    model, sample_input_tensor = create_model(yaml_path) #TODO returm sample_input_tensor
-    model_new_name = model.name + "_for_coreML" #TODO get model name
-
-    # coreML serialization
-    torch.onnx.export(model, sample_input_tensor, models_path + model_new_name)
-    mlmodel = convert(...)
-
-    pd = create_preprocess_dict(...)
-    compress_and_save(mlmodel, save_path="some path", model_name="my_model", preprocess_dict=pd)
+# def serialize_hrnet(yaml_path, models_path):
+#
+#     model, sample_input_tensor = create_model(yaml_path) #TODO returm sample_input_tensor
+#     model_new_name = model.name + "_for_coreML" #TODO get model name
+#
+#     # coreML serialization
+#     torch.onnx.export(model, sample_input_tensor, models_path + model_new_name)
+#     mlmodel = convert(...)
+#
+#     pd = create_preprocess_dict(...)
+#     compress_and_save(mlmodel, save_path="some path", model_name="my_model", preprocess_dict=pd)
 
 # yaml_path = "/Users/shira/HRNet-Semantic-Segmentation/experiments/cityscapes/seg_hrnet_w18_small_v1_512x1024_sgd_lr1e-2_wd5e-4_bs_12_epoch484.yaml"
-# create_model(yaml_path)
+# create_model()
