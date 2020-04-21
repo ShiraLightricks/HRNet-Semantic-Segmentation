@@ -4,6 +4,7 @@ import pprint
 
 import torch
 import torch.backends.cudnn as cudnn
+import torch.nn as nn
 from serialization.pytorch_converter import convert
 from serialization.utils import create_preprocess_dict, compress_and_save
 
@@ -32,25 +33,8 @@ def parse_args():
     return args
 
 
-
-
-# def parse_args(yaml_file):
-#     parser = argparse.ArgumentParser(description='Train segmentation network')
-#
-#     parser.add_argument('--cfg',
-#                         help='experiment configure file name',
-#                         type=str)
-#
-#     parser.cfg = yaml_file
-#     args = parser.parse_args()
-#     update_config(config, args)
-#     return args
-
-
-def create_model():
-    # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-    # device = torch.device('cuda:0' if torch.cuda.is_avaliable() else 'cpu')
-    args = parse_args()
+def create_model(yaml_path):
+    args = parse_args(yaml_path)
 
     logger, final_output_dir, _ = create_logger(
         config, args.cfg, 'serialization')
@@ -64,13 +48,12 @@ def create_model():
     cudnn.enabled = config.CUDNN.ENABLED
 
     # build model
-    model = eval(get_seg_model)(config)
+    model = get_seg_model(config)
 
     dump_input = torch.rand(
         (1, 3, config.TRAIN.IMAGE_SIZE[1], config.TRAIN.IMAGE_SIZE[0])
     )
     logger.info(get_model_summary(model.cuda(), dump_input.cuda()))
-    # logger.info(get_model_summary(model.to(device), dump_input.to(device)))
 
     if config.TEST.MODEL_FILE:
         model_state_file = config.TEST.MODEL_FILE
@@ -89,79 +72,57 @@ def create_model():
     model_dict.update(pretrained_dict)
     model.load_state_dict(model_dict)
 
-    # gpus = list(config.GPUS)
-    # model = nn.DataParallel(model, device_ids=gpus).cuda()
-
     return model
 
-    # # prepare data
-    # test_size = (config.TEST.IMAGE_SIZE[1], config.TEST.IMAGE_SIZE[0])
-    # test_dataset = eval('datasets.' + config.DATASET.DATASET)(
-    #     root=config.DATASET.ROOT,
-    #     list_path=config.DATASET.TEST_SET,
-    #     num_samples=None,
-    #     num_classes=config.DATASET.NUM_CLASSES,
-    #     multi_scale=False,
-    #     flip=False,
-    #     ignore_label=config.TRAIN.IGNORE_LABEL,
-    #     base_size=config.TEST.BASE_SIZE,
-    #     crop_size=test_size,
-    #     downsample_rate=1)
-    #
-    # testloader = torch.utils.data.DataLoader(
-    #     test_dataset,
-    #     batch_size=1,
-    #     shuffle=False,
-    #     num_workers=config.WORKERS,
-    #     pin_memory=True)
-    #
-    # start = timeit.default_timer()
-    # if 'val' in config.DATASET.TEST_SET:
-    #     mean_IoU, IoU_array, pixel_acc, mean_acc = testval(config,
-    #                                                        test_dataset,
-    #                                                        testloader,
-    #                                                        model)
-    #
-    #     msg = 'MeanIU: {: 4.4f}, Pixel_Acc: {: 4.4f}, \
-    #         Mean_Acc: {: 4.4f}, Class IoU: '.format(mean_IoU,
-    #                                                 pixel_acc, mean_acc)
-    #     logging.info(msg)
-    #     logging.info(IoU_array)
-    # elif 'test' in config.DATASET.TEST_SET:
-    #     test(config,
-    #          test_dataset,
-    #          testloader,
-    #          model,
-    #          sv_dir=final_output_dir)
-    #
-    # end = timeit.default_timer()
-    # logger.info('Mins: %d' % np.int((end - start) / 60))
-    # logger.info('Done')
+
+def _convert_upsample(builder, node, graph, err):
+    if 'scales' in node.attrs:
+        scales = node.attrs['scales']
+    elif len(node.input_tensors):
+        scales = node.input_tensors[node.inputs[1]]
+    else:
+        # HACK: Manual scales
+        # PROVIDE MANUAL SCALE HERE
+        scales = [1, 1, 0.5, 0.5]
+
+    scale_h = scales[2]
+    scale_w = scales[3]
+    input_shape = graph.shape_dict[node.inputs[0]]
+    target_height = int(input_shape[-2] * scale_h)
+    target_width = int(input_shape[-1] * scale_w)
+
+    builder.add_resize_bilinear(
+        name=node.name,
+        input_name=node.inputs[0],
+        output_name=node.outputs[0],
+        target_height=target_height,
+        target_width=target_width,
+        mode='UPSAMPLE_MODE'
+    )
 
 
-# if __name__ == '__main__':
-#     main()
-
-# # create onnox model
-# model_name = ""
+Y_PATH = "/experiments/cityscapes/seg_hrnet_w18_small_v1_512x1024_sgd_lr1e-2_wd5e-4_bs_12_epoch484.yaml"
 
 
-# models_path = "/Users/shira/HRNet-Semantic-Segmentation/serialization/models/"
-# model_new_name = model_name + "_for_coreML"
-# model = torch.load(models_path + model_name)
-# sample_input_tensor = ""
+def serialize_hrnet(yaml_path=Y_PATH, models_path = "/cnvrg/output/"):
+    im_size = (512, 1024)
+    batch_size = 1
+    num_channels = 3
+    model = create_model(yaml_path)
+    model_new_name = config.MODEL.NAME + "_for_coreML_" + str(im_size[0]) + "x" + str(im_size[1])
+    sample_input_tensor = torch.rand(batch_size, num_channels, im_size[0], im_size[1])
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    sample_input_tensor = sample_input_tensor.to(device)
 
-def serialize_hrnet(yaml_path, models_path):
+    onnx_export_path = models_path + model_new_name
 
-    model, sample_input_tensor = create_model(yaml_path) #TODO returm sample_input_tensor
-    model_new_name = model.name + "_for_coreML" #TODO get model name
+    torch.onnx.export(model, sample_input_tensor, onnx_export_path, opset_version=11)
 
-    # coreML serialization
-    torch.onnx.export(model, sample_input_tensor, models_path + model_new_name)
-    mlmodel = convert(...)
+    classes_list = 19 * ["label"]
+    mlmodel = convert(onnx_export_path, minimum_ios_deployment_target='13')
+    pd = create_preprocess_dict(divisible_by=1, resize_strategy=None, side_length=None, output_classes=classes_list)
 
-    pd = create_preprocess_dict(...)
-    compress_and_save(mlmodel, save_path="some path", model_name="my_model", preprocess_dict=pd)
+    new_name = "seg_hrnet_w18_small_v1_512x1024_sgd_lr1e-2_wd5e-4_bs_12_epoch484" #TODO:dynamic
 
-# yaml_path = "/Users/shira/HRNet-Semantic-Segmentation/experiments/cityscapes/seg_hrnet_w18_small_v1_512x1024_sgd_lr1e-2_wd5e-4_bs_12_epoch484.yaml"
-# create_model()
+    compress_and_save(mlmodel, save_path="/cnvrg/output/", model_name=new_name, preprocess_dict=pd)
+

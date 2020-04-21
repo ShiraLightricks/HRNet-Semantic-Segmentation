@@ -99,3 +99,4 @@ TEST:
   BATCH_SIZE_PER_GPU: 4
   FLIP_TEST: false
   MULTI_SCALE: false
+  MODEL_FILE: "pre_trained/hrnet_w18_small_model_v2.pth"

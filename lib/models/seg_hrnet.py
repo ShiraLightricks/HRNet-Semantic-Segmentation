@@ -268,13 +268,8 @@ class HighResolutionNet(nn.Module):
         self.conv2 = nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1,
                                bias=False)
         self.bn2 = BatchNorm2d(64, momentum=BN_MOMENTUM)
-<<<<<<< HEAD
-        self.relu = nn.ReLU(inplace=False)
-
-=======
         self.relu = nn.ReLU(inplace=True)
-        
->>>>>>> pytorch-v1.1
+
         self.stage1_cfg = extra['STAGE1']
         num_channels = self.stage1_cfg['NUM_CHANNELS'][0]
         block = blocks_dict[self.stage1_cfg['BLOCK']]
